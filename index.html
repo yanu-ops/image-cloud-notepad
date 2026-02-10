@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Cloud Image Notepad (GitHub)</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      padding: 20px;
+    }
+    h1 {
+      margin-bottom: 10px;
+    }
+    #controls {
+      margin-bottom: 15px;
+    }
+    #status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    #imageList img {
+      width: 150px;
+      margin: 10px;
+      border: 2px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Cloud Image Notepad</h1>
+
+<div id="controls">
+  <input type="file" id="imageInput" accept="image/*" />
+  <input type="text" id="fileName" placeholder="image-name.png" />
+  <button onclick="addImage()">Add Image</button>
+  <button onclick="loadImages()">Refresh List</button>
+</div>
+
+<div id="status"></div>
+
+<hr />
+
+<div id="imageList"></div>
+
+<script>
+/* ==============================
+   CONFIGURATION (EDIT THESE)
+================================ */
+const GITHUB_TOKEN = "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";
+const OWNER = "yanu-ops";
+const REPO = "image-cloud-notepad";
+const IMAGE_FOLDER = "images";
+
+/* ==============================
+   HELPERS
+================================ */
+function setStatus(message, success = true) {
+  const status = document.getElementById("status");
+  status.textContent = message;
+  status.style.color = success ? "green" : "red";
+}
+
+/* ==============================
+   LOAD IMAGES
+================================ */
+async function loadImages() {
+  setStatus("Loading images...");
+  document.getElementById("imageList").innerHTML = "";
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${OWNER}/${REPO}/contents/${IMAGE_FOLDER}`,
+      {
+        headers: {
+          Authorization: `token ${GITHUB_TOKEN}`
+        }
+      }
+    );
+
+    if (!response.ok) throw new Error("Failed to fetch images");
+
+    const files = await response.json();
+
+    for (const file of files) {
+      if (file.type === "file") {
+        const img = document.createElement("img");
+        img.src = file.download_url;
+        document.getElementById("imageList").appendChild(img);
+      }
+    }
+
+    setStatus("Images loaded successfully");
+  } catch (error) {
+    setStatus(error.message, false);
+  }
+}
+
+/* ==============================
+   ADD / UPDATE IMAGE
+================================ */
+async function addImage() {
+  const fileInput = document.getElementById("imageInput");
+  const fileName = document.getElementById("fileName").value;
+
+  if (!fileInput.files.length || !fileName) {
+    setStatus("Select an image and enter a file name", false);
+    return;
+  }
+
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    const base64Content = reader.result.split(",")[1];
+
+    let sha = null;
+
+    /* Check if file exists */
+    try {
+      const check = await fetch(
+        `https://api.github.com/repos/${OWNER}/${REPO}/contents/${IMAGE_FOLDER}/${fileName}`,
+        {
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`
+          }
+        }
+      );
+
+      if (check.ok) {
+        const data = await check.json();
+        sha = data.sha;
+      }
+    } catch {}
+
+    /* Upload image */
+    try {
+      const upload = await fetch(
+        `https://api.github.com/repos/${OWNER}/${REPO}/contents/${IMAGE_FOLDER}/${fileName}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            message: "Add or update image",
+            content: base64Content,
+            sha: sha
+          })
+        }
+      );
+
+      if (!upload.ok) throw new Error("Upload failed");
+
+      setStatus("Image saved to cloud successfully");
+      loadImages();
+    } catch (error) {
+      setStatus(error.message, false);
+    }
+  };
+
+  reader.readAsDataURL(file);
+}
+
+/* Load images on startup */
+loadImages();
+</script>
+
+</body>
+</html>
